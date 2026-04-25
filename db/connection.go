@@ -1,29 +1,38 @@
 package db
 
 import (
+	"context"
 	"database/sql"
-	"fmt"
-	"log"
-	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
 
-var DB *sql.DB
-
-func InitDB() {
-	connStr := os.Getenv("DATABASE_URL")
-	var err error
-	DB, err = sql.Open("postgres", connStr)
+func Open(databaseURL string) (*sql.DB, error) {
+	database, err := sql.Open("postgres", databaseURL)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		return nil, err
 	}
-	fmt.Println("Connected to PostgreSQL!")
+
+	database.SetMaxOpenConns(20)
+	database.SetMaxIdleConns(10)
+	database.SetConnMaxLifetime(30 * time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = database.PingContext(ctx)
+	if err != nil {
+		database.Close()
+		return nil, err
+	}
+
+	return database, nil
 }
 
-func CloseDB() {
-	if DB != nil {
-		DB.Close()
-		fmt.Println("Database connection closed.")
+func Close(database *sql.DB) error {
+	if database == nil {
+		return nil
 	}
+	return database.Close()
 }
