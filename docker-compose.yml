@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: meeting_room
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      ADDRESS: :8080
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/meeting_room?sslmode=disable
+      JWT_SECRET: change_this_secret
+      TOKEN_HOURS: 24
+      ADMIN_CODE: admin123
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
