@@ -8,24 +8,57 @@ import (
 	"github.com/sailesh-kona/meeting-room-booking-system/utils"
 )
 
-type ContextKey string
+type contextKey string
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+const userContextKey contextKey = "user"
 
-		tokenString := strings.Split(authHeader, "Bearer ")[1]
-		claims, err := utils.ParseJWT(tokenString)
-		if err != nil {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-			return
-		}
+type User struct {
+	ID       int
+	Username string
+	Role     string
+}
 
-		ctx := context.WithValue(r.Context(), ContextKey("user_id"), claims.UserID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+func Auth(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			header := r.Header.Get("Authorization")
+			fields := strings.Fields(header)
+			if len(fields) != 2 || !strings.EqualFold(fields[0], "Bearer") {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			claims, err := utils.ParseToken(secret, fields[1])
+			if err != nil {
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			user := User{
+				ID:       claims.UserID,
+				Username: claims.Username,
+				Role:     claims.Role,
+			}
+			ctx := context.WithValue(r.Context(), userContextKey, user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func RequireRole(role string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := CurrentUser(r)
+			if !ok || user.Role != role {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func CurrentUser(r *http.Request) (User, bool) {
+	user, ok := r.Context().Value(userContextKey).(User)
+	return user, ok
 }
